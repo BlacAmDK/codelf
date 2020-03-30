@@ -1,5 +1,5 @@
-import React, {useEffect, useReducer} from 'react';
-import {Container} from 'semantic-ui-react';
+import React, { useEffect, useReducer, useCallback } from 'react';
+import { Container } from 'semantic-ui-react';
 import SearchBar from '../components/SearchBar';
 import TitleLogo from '../components/TitleLogo';
 import SearchCodeModel from '../models/SearchCodeModel';
@@ -12,6 +12,7 @@ import Suggestion from '../components/Suggestion';
 import SourceCode from '../components/SourceCode';
 import AppModel from '../models/AppModel';
 import DDMSModel from '../models/DDMSModel';
+import Doodle from '../components/Doodle';
 
 const actionTypes = {
   UPDATE: 'update',
@@ -26,6 +27,7 @@ const initState = {
   page: SearchCodeModel.page,
   variableList: SearchCodeModel.variableList,
   suggestion: SearchCodeModel.suggestion,
+  luckyKeyWords: DDMSModel.luckyKeyWords,
   sourceCodeRequesting: false,
   sourceCodeVisible: false,
   sourceCodeVariable: null,
@@ -64,10 +66,60 @@ export default function MainContainer(props) {
     return () => SearchCodeModel.offUpdated(handleSearchCodeModelUpdate);
   });
 
-  function setState(payload) {
-    dispatch({type: actionTypes.UPDATE, payload: payload});
+  useEffect(() => {
+    function handleDDMSModelUpdate(curr, prev, mutation) {
+      if (mutation.luckyKeyWords) {
+        setState({ luckyKeyWords: curr.luckyKeyWords });
+      }
+    }
+    DDMSModel.onUpdated(handleDDMSModelUpdate);
+    return () => DDMSModel.offUpdated(handleDDMSModelUpdate);
+  }, []);
+
+  const handleSearch = useCallback((val, lang) => {
+    if (val === null || val === undefined || state.variableRequesting) {
+      return;
+    }
+    val = val.trim().replace(/\s+/ig, ' '); // filter spaces
+    if (val.length < 1) {
+      return;
+    }
+    if (val == state.searchValue) {
+      requestVariable(val, lang);
+    } else {
+      setState({ searchLang: lang });
+      setTimeout(() => HashHandler.set(val)); // update window.location.hash
+    }
+  }, [state.searchValue, state.variableRequesting]);
+
+  const handleOpenSourceCode = useCallback((variable) => {
+    setState({ sourceCodeVariable: variable });
+    setTimeout(() => requestSourceCode(variable.repoList[0]), 0);
+  }, []);
+
+  function handleCloseSourceCode() {
+    setState({ sourceCodeVisible: false });
   }
 
+  function handleRequestSourceCode(repo) {
+    requestSourceCode(repo);
+  }
+
+  function renderSloganImage() {
+    if (state.page > 0 || state.variableList.length) {
+      return '';
+    }
+    return <div className='slogan-image'><img src='images/twohardtings.jpg' /></div>;
+  }
+
+  function renderDoodle() {
+    if (state.variableList.length == 0) { return null; }
+    return <Doodle text={state.searchValue} />
+  }
+
+  function setState(payload) {
+    dispatch({ type: actionTypes.UPDATE, payload: payload });
+  }
 
   function checkError(data) {
     if (state.variableRequesting) {
@@ -88,7 +140,7 @@ export default function MainContainer(props) {
     } else {
       page = 0;
     }
-    setState({searchValue: val, variableRequesting: true});
+    setState({ searchValue: val, variableRequesting: true });
     SearchCodeModel.requestVariable(val, page, lang || state.searchLang);
     AppModel.analytics('q=' + val);
     DDMSModel.postKeyWords(val);
@@ -136,54 +188,19 @@ export default function MainContainer(props) {
     }
   }
 
-  function handleSearch(val, lang) {
-    if (val === null || val === undefined || state.variableRequesting) {
-      return;
-    }
-    val = val.trim().replace(/\s+/ig, ' '); // filter spaces
-    if (val.length < 1) {
-      return;
-    }
-    if (val == state.searchValue) {
-      requestVariable(val, lang);
-    } else {
-      setState({searchLang: lang});
-      setTimeout(() => HashHandler.set(val)); // update window.location.hash
-    }
-  }
-
-  function handleOpenSourceCode(variable) {
-    setState({sourceCodeVariable: variable});
-    setTimeout(() => requestSourceCode(variable.repoList[0]), 0);
-  }
-
-  function handleCloseSourceCode() {
-    setState({sourceCodeVisible: false});
-  }
-
-  function handleRequestSourceCode(repo) {
-    requestSourceCode(repo);
-  }
-
-  function renderSloganImage() {
-    if (state.page > 0 || state.variableList.length) {
-      return '';
-    }
-    return <div className='slogan-image'><img src='images/twohardtings.jpg'/></div>;
-  }
-
   return (
     <Container className='main-container'>
-      <TitleLogo/>
-      <SearchBar placeholder='AI 人工智能' {...state} onSearch={handleSearch}/>
-      <Suggestion {...state}/>
-      {state.variableRequesting ? <Loading/> : (state.isError ? <SearchError/> : '')}
+      <TitleLogo />
+      <SearchBar placeholder='AI 人工智能' {...state} onSearch={handleSearch} />
+      <Suggestion {...state} />
+      {state.variableRequesting ? <Loading /> : (state.isError ? <SearchError /> : '')}
       {renderSloganImage()}
-      <VariableList {...state} onOpenSourceCode={handleOpenSourceCode}/>
-      {state.variableList.length ? <Donate {...state}/> : ''}
+      <VariableList {...state} onOpenSourceCode={handleOpenSourceCode} />
+      {state.variableList.length ? <Donate {...state} /> : ''}
       <SourceCode {...state}
-                  onRequestSourceCode={handleRequestSourceCode}
-                  onCloseSourceCode={handleCloseSourceCode}/>
+        onRequestSourceCode={handleRequestSourceCode}
+        onCloseSourceCode={handleCloseSourceCode} />
+      {renderDoodle()}
     </Container>
   )
 }
